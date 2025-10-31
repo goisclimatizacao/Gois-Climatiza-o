@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { GeneratedContent, AspectRatio, ConnectionId, CarouselSlide } from '../types';
+import type { GeneratedContent, AspectRatio, ConnectionId, CarouselSlide, GeneratedPost } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ClipboardIcon, CheckIcon, WandIcon, RefreshIcon, PaperAirplaneIcon, SaveIcon, PencilIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 import { goisLogoBase64 } from './logo';
@@ -58,12 +58,25 @@ const CaptionEditor: React.FC<{
     }, [captionCopied]);
 
     const handleSave = () => {
+        // FIX: Use a type guard to correctly update the discriminated union.
+        let newPost: GeneratedPost;
+        if (content.post.type === 'image') {
+          newPost = {
+            ...content.post,
+            content: { ...content.post.content, caption: editableCaption },
+          };
+        } else {
+          newPost = {
+            ...content.post,
+            content: { ...content.post.content, caption: editableCaption },
+          };
+        }
         onContentUpdate({
-            ...content,
-            post: { ...content.post, content: { ...content.post.content, caption: editableCaption } }
+          ...content,
+          post: newPost,
         });
         setIsEditing(false);
-    };
+      };
     
     const handleCopy = () => {
         navigator.clipboard.writeText(caption);
@@ -104,7 +117,8 @@ const CaptionEditor: React.FC<{
     );
 };
 
-const ImagePostDisplay: React.FC<Omit<ContentDisplayProps, 'isLoading' | 'onProofread'>> = (props) => {
+// FIX: Removed `onProofread` from Omit<> as it's required by CaptionEditor which receives these props.
+const ImagePostDisplay: React.FC<Omit<ContentDisplayProps, 'isLoading'>> = (props) => {
     const { content, onContentUpdate, onReviseImage, isRevisingImage, onSelectImage } = props;
     const [promptCopied, setPromptCopied] = useState(false);
     const imagePrompt = content?.post.type === 'image' ? content.post.content.imagePrompt : '';
@@ -169,7 +183,8 @@ const ImagePostDisplay: React.FC<Omit<ContentDisplayProps, 'isLoading' | 'onProo
     );
 };
 
-const CarouselPostDisplay: React.FC<Omit<ContentDisplayProps, 'isLoading' | 'onProofread'>> = (props) => {
+// FIX: Removed `onProofread` from Omit<> as it's required by CaptionEditor which receives these props.
+const CarouselPostDisplay: React.FC<Omit<ContentDisplayProps, 'isLoading'>> = (props) => {
     const { content } = props;
     const [currentSlide, setCurrentSlide] = useState(0);
 

@@ -3,10 +3,13 @@ import { CollectionIcon, CalendarIcon, ChartBarIcon, WandIcon, DocumentDuplicate
 import { goisLogoBase64 } from '../components/logo';
 import { getProactiveSuggestion } from '../services/geminiService';
 import { contentPillars } from '../constants';
+import type { CompanySettings } from '../types';
 
 interface HomePageProps {
   setActiveView: (view: string) => void;
   userName: string;
+  onCreatePostFromSuggestion: (suggestion: string) => void;
+  companySettings: CompanySettings;
 }
 
 const quickStats = [
@@ -46,7 +49,12 @@ const quickActions = [
   }
 ];
 
-const AiSuggestionCard: React.FC<{ setActiveView: (view: string) => void; }> = ({ setActiveView }) => {
+interface AiSuggestionCardProps {
+  onCreatePost: (suggestion: string) => void;
+  companySettings: CompanySettings;
+}
+
+const AiSuggestionCard: React.FC<AiSuggestionCardProps> = ({ onCreatePost, companySettings }) => {
     const [suggestion, setSuggestion] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
 
@@ -55,7 +63,7 @@ const AiSuggestionCard: React.FC<{ setActiveView: (view: string) => void; }> = (
             try {
                 // In a real app, we'd pass actual recent post data. Here we simulate it.
                 const recentPillars = contentPillars.slice(0, 2).map(p => p.name);
-                const result = await getProactiveSuggestion(recentPillars);
+                const result = await getProactiveSuggestion(recentPillars, companySettings);
                 setSuggestion(result);
             } catch (error) {
                 console.error("Failed to fetch AI suggestion:", error);
@@ -65,13 +73,12 @@ const AiSuggestionCard: React.FC<{ setActiveView: (view: string) => void; }> = (
             }
         };
         fetchSuggestion();
-    }, []);
+    }, [companySettings]);
 
     const handleCreatePost = () => {
-        // This would pass the suggestion to the generator page
-        // For now, we just switch views. The generator will need a way to receive this.
-        alert(`Navegando para o gerador com a ideia:\n"${suggestion}"`);
-        setActiveView('generator');
+        if (suggestion) {
+            onCreatePost(suggestion);
+        }
     }
 
     return (
@@ -101,20 +108,17 @@ const AiSuggestionCard: React.FC<{ setActiveView: (view: string) => void; }> = (
 }
 
 
-export const HomePage: React.FC<HomePageProps> = ({ setActiveView, userName }) => {
+export const HomePage: React.FC<HomePageProps> = ({ setActiveView, userName, onCreatePostFromSuggestion, companySettings }) => {
   return (
     <div className="animate-fade-in space-y-8">
       <div className="text-center">
-        <div className="flex justify-center mb-4">
-          <img src={goisLogoBase64} alt="GOÍS Climatização Logo" className="h-20 w-auto" />
-        </div>
         <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-200">Bem-vindo(a) de volta, {userName}!</h1>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
           Este é o seu painel de controle. Pronto para criar conteúdo incrível hoje?
         </p>
       </div>
       
-      <AiSuggestionCard setActiveView={setActiveView} />
+      <AiSuggestionCard onCreatePost={onCreatePostFromSuggestion} companySettings={companySettings} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2">

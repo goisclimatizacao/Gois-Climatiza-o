@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StarIcon, WandIcon, ChatAlt2Icon } from '../components/icons';
 import { analyzeTestimonial } from '../services/geminiService';
+import type { CompanySettings } from '../types';
 
 interface Testimonial {
   id: number;
@@ -17,7 +18,13 @@ const mockTestimonials: Testimonial[] = [
     { id: 4, name: 'Ana L.', rating: 4, text: 'Técnicos muito educados e o serviço foi bem feito. Apenas demorou um pouco mais que o esperado, mas o resultado final compensou.', source: 'Facebook' },
 ];
 
-const TestimonialCard: React.FC<{ testimonial: Testimonial; onCreatePost: (idea: string) => void; }> = ({ testimonial, onCreatePost }) => {
+interface TestimonialCardProps {
+    testimonial: Testimonial;
+    onCreatePost: (idea: string) => void;
+    companySettings: CompanySettings;
+}
+
+const TestimonialCard: React.FC<TestimonialCardProps> = ({ testimonial, onCreatePost, companySettings }) => {
     const [tags, setTags] = useState<string[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(true);
 
@@ -25,7 +32,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; onCreatePost: (idea:
         const analyze = async () => {
             try {
                 setIsAnalyzing(true);
-                const resultTags = await analyzeTestimonial(testimonial.text);
+                const resultTags = await analyzeTestimonial(testimonial.text, companySettings);
                 setTags(resultTags);
             } catch (error) {
                 console.error("Failed to analyze testimonial:", error);
@@ -34,7 +41,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; onCreatePost: (idea:
             }
         };
         analyze();
-    }, [testimonial.text]);
+    }, [testimonial.text, companySettings]);
 
     const handleCreatePost = () => {
         const idea = `Criar um post de agradecimento e prova social com base no seguinte depoimento de cliente: "${testimonial.text}" - ${testimonial.name}. O foco deve ser em como a GOÍS ajudou a resolver o problema e gerou satisfação, reforçando a confiança na marca.`;
@@ -78,7 +85,10 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; onCreatePost: (idea:
     );
 };
 
-export const Testimonials: React.FC<{ onCreatePost: (testimonialText: string) => void; }> = ({ onCreatePost }) => {
+export const Testimonials: React.FC<{ 
+    onCreatePost: (testimonialText: string) => void;
+    companySettings: CompanySettings;
+}> = ({ onCreatePost, companySettings }) => {
   return (
     <div className="animate-fade-in bg-white p-6 md:p-8 rounded-lg shadow-md h-full dark:bg-gray-800">
       <div className="border-b border-gray-200 dark:border-gray-700 pb-4 mb-6 flex items-center">
@@ -93,7 +103,7 @@ export const Testimonials: React.FC<{ onCreatePost: (testimonialText: string) =>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {mockTestimonials.map((testimonial) => (
-          <TestimonialCard key={testimonial.id} testimonial={testimonial} onCreatePost={onCreatePost} />
+          <TestimonialCard key={testimonial.id} testimonial={testimonial} onCreatePost={onCreatePost} companySettings={companySettings} />
         ))}
       </div>
     </div>

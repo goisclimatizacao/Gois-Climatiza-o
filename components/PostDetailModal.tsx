@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ScheduledPost, ConnectionId } from '../types';
-import { FacebookIcon, InstagramIcon, GoogleIcon, CalendarIcon } from './icons';
+import { FacebookIcon, InstagramIcon, GoogleIcon, CalendarIcon, XIcon } from './icons';
 
 interface PostDetailModalProps {
   isOpen: boolean;
@@ -25,6 +25,9 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({ isOpen, onClos
     const formattedTime = scheduledDate.toLocaleTimeString('pt-BR', {
         hour: '2-digit', minute: '2-digit'
     });
+    
+    const aspectRatioClass = `aspect-[${post.content.aspectRatio.replace(':', '/')}]`;
+
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in-fast" onClick={onClose}>
@@ -32,7 +35,7 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({ isOpen, onClos
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Detalhes do Post Agendado</h2>
                      <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        <XIcon className="h-6 w-6 text-gray-500" />
                     </button>
                 </div>
                 <div className="flex-grow overflow-y-auto p-6">
@@ -42,7 +45,7 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({ isOpen, onClos
                              <img 
                                 src={post.content.selectedImageUrl} 
                                 alt="Post agendado" 
-                                className={`w-full rounded-lg object-cover shadow-md aspect-${post.content.aspectRatio.replace(':', '/')}`}
+                                className={`w-full rounded-lg object-cover shadow-md ${aspectRatioClass}`}
                             />
                         </div>
 
@@ -74,7 +77,7 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({ isOpen, onClos
                             <div>
                                 <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Legenda:</h3>
                                 <div className="bg-gray-50 dark:bg-gray-700/50 p-4 border border-gray-200 dark:border-gray-700 rounded-lg max-h-60 overflow-y-auto">
-                                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{post.content.post.caption}</p>
+                                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{post.content.post.content.caption}</p>
                                 </div>
                             </div>
                         </div>

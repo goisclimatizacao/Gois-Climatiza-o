@@ -1,210 +1,301 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { systemInstruction } from '../prompt-engineering/systemContext';
-import type { AspectRatio, GeneratedPost } from "../types";
+import { generateSystemInstruction } from '../prompt-engineering/systemContext';
+import type { CompanySettings, AspectRatio, GeneratedPost, CarouselSlide } from '../types';
 
-interface ImagePostContent {
-  imagePrompt: string;
-  caption: string;
+// FIX: Initialize the Gemini API client.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+
+// --- Helper function for JSON parsing ---
+const parseJsonFromMarkdown = <T>(text: string): T => {
+    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    if (!jsonMatch) {
+        // Fallback for when the model doesn't use markdown or returns raw JSON
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+             throw new Error("Invalid JSON response from model.");
+        }
+    }
+    try {
+      return JSON.parse(jsonMatch[1]);
+    } catch(e) {
+      throw new Error("Failed to parse JSON from markdown block.");
+    }
 }
 
-interface CarouselPostContent {
-    coverImagePrompt: string;
-    slides: { title: string; body: string; }[],
-    caption: string;
-}
+// --- Image Generation ---
+export const generateImage = async (prompt: string, aspectRatio: AspectRatio): Promise<{ base64: string, mimeType: string }[]> => {
+    try {
+        // FIX: Use ai.models.generateImages API for image generation.
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt,
+            config: {
+                numberOfImages: 4,
+                outputMimeType: 'image/jpeg',
+                aspectRatio,
+            },
+        });
+        
+        return response.generatedImages.map(img => ({
+            base64: img.image.imageBytes,
+            mimeType: 'image/jpeg'
+        }));
 
-interface GeneratedImage {
-    base64: string;
-    mimeType: string;
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-const imagePostSchema = {
-    type: Type.OBJECT,
-    properties: {
-        imagePrompt: {
-            type: Type.STRING,
-            description: "Um prompt detalhado em inglês para gerar uma imagem ultrarrealista. A cena DEVE ser do cotidiano brasileiro, com pessoas e ambientes autênticos de Presidente Prudente, SP. A composição fotográfica deve seguir a regra dos terços. A iluminação deve ser natural e suave. **IMPORTANTE**: Inclua sistemas de ar condicionado modernos e discretos, como modelos Split Hi-Wall, Cassete ou Piso-Teto. Evite aparelhos de janela antigos. A composição deve deixar a área do canto inferior direito visualmente limpa e sem elementos importantes, pois um logo será aplicado sobre a imagem nessa área. **EVITE a todo custo:** estéticas de banco de imagens, pessoas posando para a câmera, ambientes genéricos e iluminação artificial óbvia. Foco na emoção e autenticidade da cena. Ex: 'Candid photo following the rule of thirds, a young Brazilian family relaxes in their modern, sunlit living room in Presidente Prudente, a discreet mini-split air conditioner on the wall. The mood is peaceful. The bottom-right corner is clear. Shot on a 50mm lens, soft natural light, high detail, photorealistic.'",
-        },
-        caption: {
-            type: Type.STRING,
-            description: "A legenda para o post, em português. Deve ser concisa (2-3 frases curtas) e usar uma abordagem emocional e indireta, focando nos benefícios (conforto, saúde, bem-estar) e não no serviço em si. Crie uma conexão com o leitor. **OBRIGATÓRIO** finalizar com um CTA claro que inclua o telefone para contato (ex: 'Fale conosco pelo (18) 98103-2773') e hashtags relevantes.",
-        },
-    },
-    required: ['imagePrompt', 'caption'],
+    } catch (error) {
+        console.error("Error generating image:", error);
+        throw new Error("Failed to generate image with Gemini API.");
+    }
 };
 
-const writtenImagePostSchema = {
-    type: Type.OBJECT,
-    properties: {
-        titleForImage: { type: Type.STRING, description: "Um título curto e impactante (máximo 5 palavras) para ser inserido na imagem." },
-        bodyForImage: { type: Type.STRING, description: "Um texto de apoio curto (máximo 15 palavras) para ser inserido na imagem, abaixo do título." },
-        caption: { type: Type.STRING, description: "A legenda para o post do Instagram, que será exibida abaixo da imagem. Deve seguir todas as regras de tom de voz, CTA com telefone e hashtags." },
-    },
-    required: ['titleForImage', 'bodyForImage', 'caption'],
+// --- Text Generation & Manipulation ---
+
+export const generatePostContent = async (idea: string, settings: CompanySettings): Promise<GeneratedPost> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    // FIX: Use gemini-2.5-pro for complex text tasks.
+    const model = "gemini-2.5-pro";
+
+    try {
+        // FIX: Use ai.models.generateContent with JSON schema for structured output.
+        const response = await ai.models.generateContent({
+            model,
+            contents: `Baseado na ideia "${idea}", crie um post para a ${settings.companyName}. Gere um prompt de imagem realista e uma legenda para o post, seguindo todas as diretrizes de tom de voz, estilo visual e regras de conteúdo.`,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        imagePrompt: {
+                            type: Type.STRING,
+                            description: "Um prompt detalhado para gerar uma imagem realista e bem iluminada que represente a ideia do post, seguindo as diretrizes visuais."
+                        },
+                        caption: {
+                            type: Type.STRING,
+                            description: "Uma legenda curta, impactante e emocional para o post, incluindo o CTA e as hashtags da empresa."
+                        }
+                    },
+                    required: ["imagePrompt", "caption"]
+                }
+            }
+        });
+
+        // FIX: Extract text from response and parse JSON.
+        const jsonResponse = parseJsonFromMarkdown<{ imagePrompt: string; caption: string; }>(response.text);
+        return { type: 'image', content: jsonResponse };
+
+    } catch (error) {
+        console.error("Error in generatePostContent:", error);
+        throw new Error("Failed to generate post content with Gemini API.");
+    }
 };
 
-const captionOnlySchema = {
-    type: Type.OBJECT,
-    properties: {
-        caption: {
-            type: Type.STRING,
-            description: "A legenda para o post, em português, baseada na imagem fornecida. Deve ser concisa (2-3 frases curtas) e usar uma abordagem emocional e indireta, focando nos benefícios (conforto, saúde, bem-estar) que a imagem transmite. Crie uma conexão com o leitor. **OBRIGATÓRIO** finalizar com um CTA claro que inclua o telefone para contato (ex: 'Fale conosco pelo (18) 98103-2773') e hashtags relevantes.",
-        },
-    },
-    required: ['caption'],
+export const generateWrittenImageContent = async (idea: string, settings: CompanySettings): Promise<GeneratedPost> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    const model = "gemini-2.5-pro";
+
+    try {
+        const response = await ai.models.generateContent({
+            model,
+            contents: `Crie um post com foco em texto na imagem, baseado na ideia: "${idea}". Gere um prompt para uma imagem de fundo sutil e limpa. Depois, crie uma legenda para o post, que é o texto principal que aparecerá sobre a imagem.`,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        imagePrompt: {
+                            type: Type.STRING,
+                            description: "Um prompt para uma imagem de fundo (background) que seja sutil, limpa e relacionada ao tema, ideal para sobrepor texto."
+                        },
+                        caption: {
+                            type: Type.STRING,
+                            description: "O texto principal do post. Deve ser curto, direto e impactante, como se fosse ser escrito sobre a imagem. Inclua CTA e hashtags."
+                        }
+                    },
+                    required: ["imagePrompt", "caption"]
+                }
+            }
+        });
+
+        const jsonResponse = parseJsonFromMarkdown<{ imagePrompt: string; caption: string; }>(response.text);
+        return { type: 'image', content: jsonResponse };
+
+    } catch (error) {
+        console.error("Error in generateWrittenImageContent:", error);
+        throw new Error("Failed to generate written post content with Gemini API.");
+    }
 };
 
-const carouselPostSchema = {
-    type: Type.OBJECT,
-    properties: {
-        coverImagePrompt: {
-            type: Type.STRING,
-            description: "Prompt em inglês para a IMAGEM DE CAPA do carrossel. Deve ser visualmente impactante e seguir todas as diretrizes de realismo e autenticidade."
-        },
-        slides: {
-            type: Type.ARRAY,
-            description: "Uma lista de 2 a 4 slides para o carrossel. Cada slide deve ser curto, direto e informativo.",
-            items: {
+export const generateCarouselContent = async (idea: string, settings: CompanySettings): Promise<GeneratedPost> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    const model = "gemini-2.5-pro";
+  
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: `Crie um post em formato de carrossel com 3 a 5 slides sobre a ideia: "${idea}". Gere um prompt para a imagem de capa. Para cada slide, crie um título curto e um corpo de texto conciso. Finalize com uma legenda geral para o post, incluindo CTA e hashtags.`,
+        config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    title: { type: Type.STRING, description: "Título curto e chamativo para o slide (máx 5 palavras)." },
-                    body: { type: Type.STRING, description: "Texto de apoio para o slide (máx 20 palavras ou 3 tópicos curtos)." },
+                    coverImagePrompt: {
+                        type: Type.STRING,
+                        description: "Um prompt detalhado para a imagem de capa do carrossel."
+                    },
+                    slides: {
+                        type: Type.ARRAY,
+                        description: "Uma lista de 3 a 5 slides para o carrossel.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                title: { type: Type.STRING, description: "Título curto e chamativo para o slide." },
+                                body: { type: Type.STRING, description: "Texto conciso para o corpo do slide." },
+                            },
+                             required: ["title", "body"]
+                        }
+                    },
+                    caption: {
+                        type: Type.STRING,
+                        description: "A legenda final para o post do carrossel, incluindo CTA e hashtags."
+                    }
                 },
-                required: ["title", "body"]
+                 required: ["coverImagePrompt", "slides", "caption"]
             }
-        },
-        caption: {
-            type: Type.STRING,
-            description: "A legenda final para o post de carrossel, incluindo CTA com telefone e hashtags."
         }
-    },
-    required: ["coverImagePrompt", "slides", "caption"]
-};
-
-const testimonialAnalysisSchema = {
-    type: Type.OBJECT,
-    properties: {
-        tags: {
-            type: Type.ARRAY,
-            description: "Uma lista de 2 a 4 palavras-chave ou frases curtas que resumem os pontos positivos do depoimento.",
-            items: { type: Type.STRING }
-        }
-    },
-    required: ["tags"]
-};
-
-const proactiveSuggestionSchema = {
-    type: Type.OBJECT,
-    properties: {
-        suggestion: {
-            type: Type.STRING,
-            description: "Uma ideia de post curta, criativa e estratégica, pronta para ser usada no gerador de conteúdo."
-        }
-    },
-    required: ["suggestion"]
+      });
+  
+      const jsonResponse = parseJsonFromMarkdown<{ coverImagePrompt: string; slides: CarouselSlide[]; caption: string }>(response.text);
+      return { type: 'carousel', content: jsonResponse };
+  
+    } catch (error) {
+      console.error("Error in generateCarouselContent:", error);
+      throw new Error("Failed to generate carousel content with Gemini API.");
+    }
 };
 
 
-const callGemini = async (prompt: string, schema: object): Promise<any> => {
-    const model = 'gemini-2.5-flash';
-    const response = await ai.models.generateContent({
-        model: model,
-        contents: prompt,
-        config: {
-            systemInstruction: systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: schema,
-        }
-    });
-    const jsonText = response.text.trim();
-    return JSON.parse(jsonText);
-}
-
-export const generatePostContent = async (idea: string): Promise<GeneratedPost> => {
-    const post = await callGemini(`Com base na seguinte ideia, gere o conteúdo para um post com imagem e legenda: "${idea}"`, imagePostSchema) as ImagePostContent;
-    return { type: 'image', content: post };
-};
-
-export const generateWrittenImageContent = async (idea: string): Promise<GeneratedPost> => {
-    const textContent = await callGemini(`Gere o texto para uma imagem de post escrito com base na seguinte ideia: "${idea}"`, writtenImagePostSchema) as { titleForImage: string; bodyForImage: string; caption: string; };
-
-    const { titleForImage, bodyForImage, caption } = textContent;
-
-    const imagePrompt = `A ultra-realistic, professional social media graphic that looks like it was made by a senior designer for 'GOÍS Climatização'.
-- Aesthetics: Minimalist, clean, modern, and trustworthy, with plenty of negative space.
-- Background: A subtle background using the brand's dark blue (#002060) or a clean, light gray.
-- Layout: Apply the rule of thirds. The main text should not be dead center.
-- Typography: Use the 'Montserrat' and 'Lato' fonts. The text must be sharp and highly readable.
-- Title Text: Prominently display the text "${titleForImage}" in 'Montserrat Bold'.
-- Body Text: Below the title, in a smaller size, display the text "${bodyForImage}" in 'Lato Regular'.
-- Color Palette: Text and graphic elements MUST strictly use the brand's primary colors: white text on the dark blue background, or dark blue (#002060) text on a light background. Use green (#94c11f) for small, subtle accents only.
-- Branding: **CRITICAL**: The official company logo will be programmatically added to the bottom-right corner later. Ensure this area remains completely clean and visually uncluttered. Do not generate any text or logos yourself.
-- Final Output: Photorealistic graphic render, 8k, highest detail, sharp focus on text.`;
-
-    return { type: 'image', content: { imagePrompt, caption } };
-}
-
-export const generateCarouselContent = async (idea: string): Promise<GeneratedPost> => {
-    const post = await callGemini(`Gere o conteúdo para um post em formato carrossel (capa, 2-4 slides, e legenda final) com base na ideia: "${idea}"`, carouselPostSchema) as CarouselPostContent;
-    return { type: 'carousel', content: post };
-};
-
-export const generateCaptionForImage = async (base64Image: string, mimeType: string): Promise<{ caption: string }> => {
-    const model = 'gemini-2.5-flash';
-
-    const imagePart = { inlineData: { mimeType, data: base64Image } };
-    const textPart = { text: 'Analise esta imagem de um serviço ou ambiente climatizado e crie uma legenda para um post no Instagram, seguindo as diretrizes do sistema.' };
-
-    const response = await ai.models.generateContent({
-        model: model,
-        contents: { parts: [imagePart, textPart] },
-        config: {
-            systemInstruction: systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: captionOnlySchema,
-        }
-    });
+export const generateCaptionForImage = async (base64Image: string, mimeType: string, settings: CompanySettings): Promise<{ caption: string }> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    // FIX: Use gemini-2.5-pro for multi-modal tasks.
+    const model = "gemini-2.5-pro";
     
-    const jsonText = response.text.trim();
-    return JSON.parse(jsonText) as { caption: string };
+    try {
+        const imagePart = {
+            inlineData: {
+                mimeType,
+                data: base64Image,
+            },
+        };
+        const textPart = {
+            text: "Analise esta imagem e crie uma legenda criativa e relevante para ela, seguindo o tom de voz e as diretrizes da empresa. A legenda deve ser curta, emocional, incluir o CTA e as hashtags."
+        };
+
+        const response = await ai.models.generateContent({
+            model,
+            contents: { parts: [imagePart, textPart] },
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        caption: {
+                            type: Type.STRING,
+                            description: "A legenda gerada para a imagem."
+                        }
+                    },
+                    required: ["caption"]
+                }
+            },
+        });
+
+        return parseJsonFromMarkdown<{ caption: string }>(response.text);
+        
+    } catch (error) {
+        console.error("Error generating caption for image:", error);
+        throw new Error("Failed to generate caption with Gemini API.");
+    }
 };
 
-export const generateImage = async (prompt: string, aspectRatio: AspectRatio): Promise<GeneratedImage[]> => {
-    const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
-        prompt: prompt,
-        config: {
-          numberOfImages: 2,
-          outputMimeType: 'image/jpeg',
-          aspectRatio: aspectRatio,
-        },
-    });
 
-    return response.generatedImages.map(img => ({
-        base64: img.image.imageBytes,
-        mimeType: 'image/jpeg'
-    }));
+export const proofreadText = async (text: string, settings: CompanySettings): Promise<string> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    // FIX: Use gemini-2.5-flash for basic text tasks like proofreading.
+    const model = "gemini-2.5-flash";
+
+    try {
+        const response = await ai.models.generateContent({
+            model,
+            contents: `Revise e melhore o seguinte texto para um post, mantendo o tom de voz da ${settings.companyName}. Corrija a gramática, melhore a clareza e o impacto, mas mantenha a mensagem original. O texto é: "${text}"`,
+            config: {
+                systemInstruction,
+                temperature: 0.3,
+            }
+        });
+        // FIX: Extract text directly from response object.
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error proofreading text:", error);
+        throw new Error("Failed to proofread text with Gemini API.");
+    }
 };
 
-export const proofreadText = async (text: string): Promise<string> => {
-    const model = 'gemini-2.5-flash';
-    const response = await ai.models.generateContent({
-        model: model,
-        contents: `Revise e melhore o seguinte texto para um post de Instagram, mantendo o tom de voz da GOÍS Climatização. Seja conciso e impactante. Mantenha o CTA e as hashtags no final. Texto original: "${text}"`,
-        config: { systemInstruction },
-    });
-    return response.text;
+
+export const getProactiveSuggestion = async (recentPillars: string[], settings: CompanySettings): Promise<string> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    const model = "gemini-2.5-flash";
+
+    try {
+        const response = await ai.models.generateContent({
+            model,
+            contents: `Considerando que os últimos posts da ${settings.companyName} foram sobre os temas [${recentPillars.join(', ')}], sugira uma ideia criativa e relevante para o próximo post. A sugestão deve ser uma frase curta e direta, que possa ser usada como ponto de partida para a criação de conteúdo. Evite os temas já abordados recentemente.`,
+            config: {
+                systemInstruction,
+                temperature: 0.9,
+            }
+        });
+
+        return response.text.trim().replace(/"/g, ''); // Remove quotes
+    } catch (error) {
+        console.error("Error getting proactive suggestion:", error);
+        throw new Error("Failed to get suggestion with Gemini API.");
+    }
 };
 
-export const analyzeTestimonial = async (text: string): Promise<string[]> => {
-    const result = await callGemini(`Analise o seguinte depoimento e extraia os principais pontos positivos em formato de tags: "${text}"`, testimonialAnalysisSchema) as { tags: string[] };
-    return result.tags;
-}
+export const analyzeTestimonial = async (testimonial: string, settings: CompanySettings): Promise<string[]> => {
+    const systemInstruction = generateSystemInstruction(settings);
+    const model = "gemini-2.5-flash";
 
-export const getProactiveSuggestion = async (recentPillars: string[]): Promise<string> => {
-    const prompt = `Com base nos pilares de conteúdo recentes (${recentPillars.join(', ')}), sugira uma nova ideia de post criativa e estratégica que ainda não foi abordada ou que mereça destaque agora.`;
-    const result = await callGemini(prompt, proactiveSuggestionSchema) as { suggestion: string };
-    return result.suggestion;
-}
+    try {
+        const response = await ai.models.generateContent({
+            model,
+            contents: `Analise o seguinte depoimento de cliente da ${settings.companyName}: "${testimonial}". Extraia de 2 a 4 tags ou palavras-chave que resumam os pontos positivos mencionados (ex: "atendimento rápido", "profissionalismo", "economia de energia", "qualidade do ar").`,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        tags: {
+                            type: Type.ARRAY,
+                            description: "Uma lista de 2 a 4 tags que resumem o depoimento.",
+                            items: {
+                                type: Type.STRING
+                            }
+                        }
+                    },
+                    required: ["tags"]
+                }
+            }
+        });
+
+        const jsonResponse = parseJsonFromMarkdown<{ tags: string[] }>(response.text);
+        return jsonResponse.tags;
+    } catch (error) {
+        console.error("Error analyzing testimonial:", error);
+        throw new Error("Failed to analyze testimonial with Gemini API.");
+    }
+};

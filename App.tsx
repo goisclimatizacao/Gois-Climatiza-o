@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { HomePage } from './pages/HomePage';
 import { ContentGenerator } from './pages/ContentGenerator';
 import { ContentLibrary } from './pages/ContentLibrary';
@@ -9,9 +10,12 @@ import { Connections } from './pages/Connections';
 import { LoginPage } from './pages/LoginPage';
 import { RealtimeDashboard } from './pages/RealtimeDashboard';
 import { Testimonials } from './pages/Testimonials';
-import type { LibraryImage, User, ConnectionId, ScheduledPost, GeneratedContent, Draft, PublishedPost } from './types';
+import { Team } from './pages/Team';
+import { Settings } from './pages/Settings';
+import { TemplateLibrary } from './pages/TemplateLibrary';
+import type { LibraryImage, User, ConnectionId, ScheduledPost, GeneratedContent, Draft, PublishedPost, TeamMember, CompanySettings, PaidCampaign, PostTemplate } from './types';
 
-// Mock data for scheduled posts
+// Mock data for scheduled posts - used as a fallback if localStorage is empty
 const getMockScheduledPosts = (): ScheduledPost[] => {
   const today = new Date();
   const currentMonth = today.getMonth();
@@ -65,13 +69,32 @@ const getMockScheduledPosts = (): ScheduledPost[] => {
   ];
 };
 
+const defaultCompanySettings: CompanySettings = {
+  companyName: 'GOÍS Climatização',
+  slogan: 'Especialista em Ar Condicionado',
+  location: 'Presidente Prudente, São Paulo (SP)',
+  services: 'PMOC (Plano de Manutenção, Operação e Controle), Manutenção Preventiva e Corretiva, Instalação de Sistemas (SPLIT, K7, PISO TETO, etc.), Projetos de Climatização.',
+  voiceTone: 'Leve, emocional, humano e indireto, focado em conforto, bem-estar e saúde.',
+  cta: 'Fale com nosso especialista pelo (18) 98103-2773',
+  hashtags: '#GoisClimatizacao #ArCondicionado #PresidentePrudente #QualidadeDoAr #Conforto #BemEstar'
+};
+
+const defaultTeamMembers: TeamMember[] = [
+    { id: 'user_admin', email: 'admin@gois.com', role: 'admin', name: 'Admin GOÍS' },
+    { id: 'user_mkt', email: 'marketing@gois.com', role: 'marketing', name: 'Equipe Marketing' }
+];
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState('home');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Content flow states
   const [imageFromLibrary, setImageFromLibrary] = useState<LibraryImage | null>(null);
   const [ideaFromTestimonial, setIdeaFromTestimonial] = useState<string | null>(null);
+  const [ideaFromHome, setIdeaFromHome] = useState<string | null>(null);
   const [contentToLoad, setContentToLoad] = useState<GeneratedContent | null>(null);
+  const [templateToUse, setTemplateToUse] = useState<PostTemplate | null>(null);
 
   const [connections, setConnections] = useState<Record<ConnectionId, boolean>>({
     facebook: true,
@@ -79,11 +102,71 @@ function App() {
     google: false,
   });
 
-  // New states for advanced features
+  // App data states with localStorage persistence
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'light');
-  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>(getMockScheduledPosts());
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [publishedPosts, setPublishedPosts] = useState<PublishedPost[]>([]);
+  
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>(() => {
+    try {
+      const saved = localStorage.getItem('scheduledPosts');
+      return saved ? JSON.parse(saved) : getMockScheduledPosts();
+    } catch {
+      return getMockScheduledPosts();
+    }
+  });
+
+  const [drafts, setDrafts] = useState<Draft[]>(() => {
+    try {
+      const saved = localStorage.getItem('drafts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [publishedPosts, setPublishedPosts] = useState<PublishedPost[]>(() => {
+    try {
+      const saved = localStorage.getItem('publishedPosts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(() => {
+    try {
+        const saved = localStorage.getItem('companySettings');
+        return saved ? JSON.parse(saved) : defaultCompanySettings;
+    } catch {
+        return defaultCompanySettings;
+    }
+  });
+
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
+    try {
+        const saved = localStorage.getItem('teamMembers');
+        return saved ? JSON.parse(saved) : defaultTeamMembers;
+    } catch {
+        return defaultTeamMembers;
+    }
+  });
+
+  const [paidCampaigns, setPaidCampaigns] = useState<PaidCampaign[]>(() => {
+     try {
+        const saved = localStorage.getItem('paidCampaigns');
+        return saved ? JSON.parse(saved) : [];
+    } catch {
+        return [];
+    }
+  });
+  
+  // Effect to sync state with localStorage
+  useEffect(() => { localStorage.setItem('scheduledPosts', JSON.stringify(scheduledPosts)); }, [scheduledPosts]);
+  useEffect(() => { localStorage.setItem('drafts', JSON.stringify(drafts)); }, [drafts]);
+  useEffect(() => { localStorage.setItem('publishedPosts', JSON.stringify(publishedPosts)); }, [publishedPosts]);
+  useEffect(() => { localStorage.setItem('companySettings', JSON.stringify(companySettings)); }, [companySettings]);
+  useEffect(() => { localStorage.setItem('teamMembers', JSON.stringify(teamMembers)); }, [teamMembers]);
+  useEffect(() => { localStorage.setItem('paidCampaigns', JSON.stringify(paidCampaigns)); }, [paidCampaigns]);
+
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -113,12 +196,23 @@ function App() {
     setIdeaFromTestimonial(testimonialText);
     setActiveView('generator');
   };
-  
   const clearIdeaFromTestimonial = () => { setIdeaFromTestimonial(null); };
+
+  const handleCreatePostFromHome = (suggestion: string) => {
+    setIdeaFromHome(suggestion);
+    setActiveView('generator');
+  };
+  const clearIdeaFromHome = () => { setIdeaFromHome(null); };
   
   const handleToggleConnection = (id: ConnectionId) => {
     setConnections(prev => ({ ...prev, [id]: !prev[id] }));
   };
+  
+  const handleUseTemplate = (template: PostTemplate) => {
+    setTemplateToUse(template);
+    setActiveView('generator');
+  };
+  const clearTemplateToUse = () => { setTemplateToUse(null); };
 
   const handleSchedulePost = (content: GeneratedContent, scheduledDate: string, platforms: ConnectionId[]) => {
     const newPost: ScheduledPost = {
@@ -163,25 +257,74 @@ function App() {
   const clearContentToLoad = () => {
     setContentToLoad(null);
   };
+  
+  const handleSetActiveView = (view: string) => {
+    setActiveView(view);
+    setIsSidebarOpen(false); // Close sidebar on navigation
+  };
+
+  // New handler functions for functional pages
+  const handleUpdateSettings = (newSettings: CompanySettings) => {
+    setCompanySettings(newSettings);
+  };
+
+  const handleAddTeamMember = (memberData: Omit<TeamMember, 'id'>) => {
+    const newMember: TeamMember = {
+        ...memberData,
+        id: `user_${new Date().getTime()}`,
+    };
+    setTeamMembers(prev => [...prev, newMember]);
+  };
+
+  const handleRemoveTeamMember = (memberId: string) => {
+    // Prevent deleting the last admin
+    const admins = teamMembers.filter(m => m.role === 'admin');
+    const memberToRemove = teamMembers.find(m => m.id === memberId);
+    if (memberToRemove?.role === 'admin' && admins.length <= 1) {
+        alert("Não é possível remover o último administrador.");
+        return;
+    }
+    setTeamMembers(prev => prev.filter(member => member.id !== memberId));
+  };
+
+  const handleCreateCampaign = (campaignData: Omit<PaidCampaign, 'id' | 'mockMetrics' | 'status'>) => {
+    const newCampaign: PaidCampaign = {
+        ...campaignData,
+        id: `camp_${new Date().getTime()}`,
+        status: 'active',
+        mockMetrics: {
+            reach: Math.floor(Math.random() * (campaignData.budget * 150 - campaignData.budget * 50 + 1) + campaignData.budget * 50),
+            clicks: Math.floor(Math.random() * (campaignData.budget * 5 - campaignData.budget * 1 + 1) + campaignData.budget * 1),
+        }
+    };
+    setPaidCampaigns(prev => [newCampaign, ...prev]);
+  };
 
 
   const renderView = () => {
     switch (activeView) {
       case 'home':
-        return <HomePage setActiveView={setActiveView} userName={user?.name || ''} />;
+        return <HomePage setActiveView={handleSetActiveView} userName={user?.name || ''} onCreatePostFromSuggestion={handleCreatePostFromHome} companySettings={companySettings} />;
       case 'generator':
         return <ContentGenerator 
                   imageFromLibrary={imageFromLibrary} 
                   clearImageFromLibrary={clearImageFromLibrary}
                   ideaFromTestimonial={ideaFromTestimonial}
                   clearIdeaFromTestimonial={clearIdeaFromTestimonial}
+                  ideaFromHome={ideaFromHome}
+                  clearIdeaFromHome={clearIdeaFromHome}
+                  templateToUse={templateToUse}
+                  clearTemplateToUse={clearTemplateToUse}
                   contentToLoad={contentToLoad}
                   clearContentToLoad={clearContentToLoad}
                   connections={connections}
                   onSchedulePost={handleSchedulePost}
                   onPublishPost={handlePublishPost}
                   onSaveDraft={handleSaveDraft}
+                  companySettings={companySettings}
                 />;
+      case 'templates':
+        return <TemplateLibrary onUseTemplate={handleUseTemplate} />;
       case 'library':
         return <ContentLibrary 
                   onSelectImage={handleSelectImageFromLibrary}
@@ -190,19 +333,23 @@ function App() {
                   onLoadDraft={handleLoadDraft}
                 />;
       case 'testimonials':
-        return <Testimonials onCreatePost={handleCreatePostFromTestimonial} />;
+        return <Testimonials onCreatePost={handleCreatePostFromTestimonial} companySettings={companySettings} />;
       case 'scheduler':
         return <Scheduler scheduledPosts={scheduledPosts} />;
       case 'realtime-dashboard':
         return <RealtimeDashboard />;
+      case 'team':
+        return <Team teamMembers={teamMembers} onAddMember={handleAddTeamMember} onRemoveMember={handleRemoveTeamMember} />;
+      case 'settings':
+        return <Settings settings={companySettings} onUpdateSettings={handleUpdateSettings} />;
       case 'paid-traffic':
-        if (user?.role !== 'admin') return <HomePage setActiveView={setActiveView} userName={user?.name || ''} />;
-        return <PaidTraffic />;
+        if (user?.role !== 'admin') return <HomePage setActiveView={handleSetActiveView} userName={user?.name || ''} onCreatePostFromSuggestion={handleCreatePostFromHome} companySettings={companySettings} />;
+        return <PaidTraffic paidCampaigns={paidCampaigns} publishedPosts={publishedPosts} onCreateCampaign={handleCreateCampaign} />;
       case 'connections':
-        if (user?.role !== 'admin') return <HomePage setActiveView={setActiveView} userName={user?.name || ''} />;
+        if (user?.role !== 'admin') return <HomePage setActiveView={handleSetActiveView} userName={user?.name || ''} onCreatePostFromSuggestion={handleCreatePostFromHome} companySettings={companySettings}/>;
         return <Connections connections={connections} onToggleConnection={handleToggleConnection} />;
       default:
-        return <HomePage setActiveView={setActiveView} userName={user?.name || ''} />;
+        return <HomePage setActiveView={handleSetActiveView} userName={user?.name || ''} onCreatePostFromSuggestion={handleCreatePostFromHome} companySettings={companySettings} />;
     }
   };
 
@@ -214,18 +361,26 @@ function App() {
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 font-sans text-gray-800 dark:text-gray-200">
       <Sidebar
         activeView={activeView} 
-        setActiveView={setActiveView}
+        setActiveView={handleSetActiveView}
         onLogout={handleLogout}
         userRole={user.role}
         userName={user.name}
         theme={theme}
         onThemeToggle={handleThemeToggle}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
-      <main className="flex-1 overflow-y-auto">
-        <div className="container mx-auto p-4 md:p-8">
-          {renderView()}
-        </div>
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Header 
+          activeView={activeView}
+          onMenuClick={() => setIsSidebarOpen(true)}
+        />
+        <main className="flex-1 overflow-y-auto">
+          <div className="container mx-auto p-4 md:p-8">
+            {renderView()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

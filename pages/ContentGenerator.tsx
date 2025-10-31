@@ -3,19 +3,24 @@ import { IdeaForm } from '../components/IdeaForm';
 import { ContentDisplay } from '../components/ContentDisplay';
 import { generatePostContent, generateImage, proofreadText, generateWrittenImageContent, generateCaptionForImage, generateCarouselContent } from '../services/geminiService';
 import { urlToBase64 } from '../utils/imageUtils';
-import type { GeneratedContent, AspectRatio, LibraryImage, ConnectionId, Draft, PublishedPost, GeneratedPost } from '../types';
+import type { GeneratedContent, AspectRatio, LibraryImage, ConnectionId, Draft, PublishedPost, GeneratedPost, CompanySettings, PostTemplate } from '../types';
 
 interface ContentGeneratorProps {
   imageFromLibrary: LibraryImage | null;
   clearImageFromLibrary: () => void;
   ideaFromTestimonial: string | null;
   clearIdeaFromTestimonial: () => void;
+  ideaFromHome: string | null;
+  clearIdeaFromHome: () => void;
+  templateToUse: PostTemplate | null;
+  clearTemplateToUse: () => void;
   contentToLoad: GeneratedContent | null;
   clearContentToLoad: () => void;
   connections: Record<ConnectionId, boolean>;
   onSchedulePost: (content: GeneratedContent, scheduledDate: string, platforms: ConnectionId[]) => void;
   onPublishPost: (content: GeneratedContent, platforms: ConnectionId[]) => void;
   onSaveDraft: (draft: Draft) => void;
+  companySettings: CompanySettings;
 }
 
 export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({ 
@@ -23,12 +28,17 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
   clearImageFromLibrary,
   ideaFromTestimonial,
   clearIdeaFromTestimonial,
+  ideaFromHome,
+  clearIdeaFromHome,
+  templateToUse,
+  clearTemplateToUse,
   contentToLoad,
   clearContentToLoad,
   connections,
   onSchedulePost,
   onPublishPost,
-  onSaveDraft
+  onSaveDraft,
+  companySettings
 }) => {
   const [content, setContent] = useState<GeneratedContent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,13 +68,69 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
     setError(friendlyMessage);
   };
 
+  const handleGenerate = useCallback(async (idea: string, aspectRatio: AspectRatio, generatorFn: (idea: string, settings: CompanySettings) => Promise<GeneratedPost>) => {
+    setIsLoading(true);
+    setError(null);
+    setContent(null);
+
+    try {
+      const postData = await generatorFn(idea, companySettings);
+      const imagePrompt = postData.type === 'image' ? postData.content.imagePrompt : postData.content.coverImagePrompt;
+      
+      const images = await generateImage(imagePrompt, aspectRatio);
+      const imageUrls = images.map(img => `data:${img.mimeType};base64,${img.base64}`);
+      
+      setContent({ 
+        id: `content_${new Date().getTime()}`,
+        post: postData, 
+        imageUrls, 
+        selectedImageUrl: imageUrls[0], 
+        aspectRatio 
+      });
+    } catch (e) {
+      handleApiError(e, 'gerar conteúdo');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [companySettings]);
+
+  const handleGenerateImagePost = useCallback((idea: string, aspectRatio: AspectRatio) => {
+    handleGenerate(idea, aspectRatio, generatePostContent);
+  }, [handleGenerate]);
+
+  const handleGenerateWrittenPost = useCallback((idea: string, aspectRatio: AspectRatio) => {
+    handleGenerate(idea, aspectRatio, generateWrittenImageContent);
+  }, [handleGenerate]);
+  
+  const handleGenerateCarouselPost = useCallback((idea: string, aspectRatio: AspectRatio) => {
+    handleGenerate(idea, aspectRatio, generateCarouselContent);
+  }, [handleGenerate]);
+  
+  // Effect to handle generation from a template
+  useEffect(() => {
+    if (templateToUse) {
+        switch (templateToUse.type) {
+            case 'image':
+                handleGenerateImagePost(templateToUse.prompt, templateToUse.aspectRatio);
+                break;
+            case 'written':
+                handleGenerateWrittenPost(templateToUse.prompt, templateToUse.aspectRatio);
+                break;
+            case 'carousel':
+                handleGenerateCarouselPost(templateToUse.prompt, templateToUse.aspectRatio);
+                break;
+        }
+        clearTemplateToUse();
+    }
+  }, [templateToUse, clearTemplateToUse, handleGenerateImagePost, handleGenerateWrittenPost, handleGenerateCarouselPost]);
+
   const handleGenerateCaptionForLibraryImage = useCallback(async (image: LibraryImage) => {
     setIsLoading(true);
     setError(null);
     setContent(null);
     try {
       const base64Image = await urlToBase64(image.url);
-      const { caption } = await generateCaptionForImage(base64Image, 'image/jpeg');
+      const { caption } = await generateCaptionForImage(base64Image, 'image/jpeg', companySettings);
       
       setContent({
         id: `content_${new Date().getTime()}`,
@@ -85,7 +151,7 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [companySettings]);
 
   useEffect(() => {
     if (imageFromLibrary) {
@@ -101,44 +167,13 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
     }
   }, [ideaFromTestimonial, clearIdeaFromTestimonial]);
 
-
-  const handleGenerate = useCallback(async (idea: string, aspectRatio: AspectRatio, generatorFn: (idea: string) => Promise<GeneratedPost>) => {
-    setIsLoading(true);
-    setError(null);
-    setContent(null);
-
-    try {
-      const postData = await generatorFn(idea);
-      const imagePrompt = postData.type === 'image' ? postData.content.imagePrompt : postData.content.coverImagePrompt;
-      
-      const images = await generateImage(imagePrompt, aspectRatio);
-      const imageUrls = images.map(img => `data:${img.mimeType};base64,${img.base64}`);
-      
-      setContent({ 
-        id: `content_${new Date().getTime()}`,
-        post: postData, 
-        imageUrls, 
-        selectedImageUrl: imageUrls[0], 
-        aspectRatio 
-      });
-    } catch (e) {
-      handleApiError(e, 'gerar conteúdo');
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    if (ideaFromHome) {
+        setInitialIdea(ideaFromHome);
+        clearIdeaFromHome();
     }
-  }, []);
+  }, [ideaFromHome, clearIdeaFromHome]);
 
-  const handleGenerateImagePost = useCallback((idea: string, aspectRatio: AspectRatio) => {
-    handleGenerate(idea, aspectRatio, generatePostContent);
-  }, [handleGenerate]);
-
-  const handleGenerateWrittenPost = useCallback((idea: string, aspectRatio: AspectRatio) => {
-    handleGenerate(idea, aspectRatio, generateWrittenImageContent);
-  }, [handleGenerate]);
-  
-  const handleGenerateCarouselPost = useCallback((idea: string, aspectRatio: AspectRatio) => {
-    handleGenerate(idea, aspectRatio, generateCarouselContent);
-  }, [handleGenerate]);
 
   const handleReviseImage = useCallback(async (newPrompt?: string) => {
     if (!content) return;
@@ -151,19 +186,34 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
         const images = await generateImage(promptToUse, content.aspectRatio);
         const imageUrls = images.map(img => `data:${img.mimeType};base64,${img.base64}`);
         
-        setContent(prev => prev ? ({ 
-          ...prev, 
-          imageUrls,
-          selectedImageUrl: imageUrls[0],
-          post: {
-            ...prev.post,
-            content: {
-              ...prev.post.content,
-              imagePrompt: prev.post.type === 'image' ? promptToUse : prev.post.content.imagePrompt,
-              coverImagePrompt: prev.post.type === 'carousel' ? promptToUse : prev.post.content.coverImagePrompt,
-            }
-          } as GeneratedPost
-        }) : null);
+        // FIX: Correctly update state for a discriminated union by building the new post object based on its type.
+        setContent(prev => {
+            if (!prev) return null;
+
+            const newPost: GeneratedPost =
+                prev.post.type === 'image'
+                    ? {
+                        ...prev.post,
+                        content: {
+                            ...prev.post.content,
+                            imagePrompt: promptToUse,
+                        },
+                        }
+                    : {
+                        ...prev.post,
+                        content: {
+                            ...prev.post.content,
+                            coverImagePrompt: promptToUse,
+                        },
+                        };
+            
+            return {
+                ...prev,
+                imageUrls,
+                selectedImageUrl: imageUrls[0],
+                post: newPost,
+            };
+        });
     } catch (e) {
         handleApiError(e, 'revisar imagem');
     } finally {
@@ -178,19 +228,34 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
     setError(null);
 
     try {
-      const proofreadCaption = await proofreadText(textToProofread);
+      const proofreadCaption = await proofreadText(textToProofread, companySettings);
       
+      // FIX: Correctly update state for a discriminated union by building the new post object based on its type.
       setContent(prevContent => {
         if (!prevContent) return null;
-        return { 
-          ...prevContent,
-          post: {
+        
+        let newPost: GeneratedPost;
+        if (prevContent.post.type === 'image') {
+            newPost = {
               ...prevContent.post,
               content: {
                   ...prevContent.post.content,
-                  caption: proofreadCaption
-              }
-          } as GeneratedPost
+                  caption: proofreadCaption,
+              },
+            };
+        } else {
+             newPost = {
+              ...prevContent.post,
+              content: {
+                  ...prevContent.post.content,
+                  caption: proofreadCaption,
+              },
+            };
+        }
+        
+        return { 
+          ...prevContent,
+          post: newPost
         };
       });
     } catch (e) {
@@ -198,7 +263,7 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = React.memo(({
     } finally {
       setIsProofreading(false);
     }
-  }, [content]);
+  }, [content, companySettings]);
 
   const handleSelectImage = useCallback((imageUrl: string) => {
     setContent(prevContent => {

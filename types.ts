@@ -1,3 +1,4 @@
+// FIX: Removed the self-referential import of `GeneratedPost`, which was causing a conflict as the type is declared within this same file.
 export type AspectRatio = '1:1' | '4:3' | '9:16';
 export type ConnectionId = 'facebook' | 'instagram' | 'google';
 
@@ -46,6 +47,50 @@ export interface User {
   role: UserRole;
   name: string;
 }
+
+// --- New Types for functional pages ---
+
+export interface TeamMember extends User {
+  id: string;
+}
+
+export interface CompanySettings {
+  companyName: string;
+  slogan: string;
+  location: string;
+  services: string;
+  voiceTone: string;
+  cta: string;
+  hashtags: string;
+}
+
+export interface PaidCampaign {
+  id: string;
+  postId: string;
+  postContent: GeneratedContent;
+  status: 'active' | 'completed';
+  budget: number;
+  durationDays: number;
+  startDate: string; // ISO string
+  targetAudience: string;
+  mockMetrics: {
+    reach: number;
+    clicks: number;
+  };
+}
+
+// --- Template Library Type ---
+export interface PostTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  previewImageUrl: string;
+  prompt: string;
+  type: 'image' | 'carousel' | 'written';
+  aspectRatio: AspectRatio;
+}
+
 
 // --- App State Structures ---
 

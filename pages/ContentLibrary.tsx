@@ -13,11 +13,12 @@ interface ContentLibraryProps {
 
 type Tab = 'library' | 'drafts' | 'published';
 
+// FIX: Wrapped icons in a span with a title attribute to avoid passing an invalid prop to the SVG component.
 const PlatformIcon: React.FC<{platform: ConnectionId}> = ({platform}) => {
     switch(platform) {
-        case 'facebook': return <FacebookIcon className="w-4 h-4 text-blue-600" title="Facebook" />;
-        case 'instagram': return <InstagramIcon className="w-4 h-4 text-pink-600" title="Instagram" />;
-        case 'google': return <GoogleIcon className="w-4 h-4" title="Google" />;
+        case 'facebook': return <span title="Facebook"><FacebookIcon className="w-4 h-4 text-blue-600" /></span>;
+        case 'instagram': return <span title="Instagram"><InstagramIcon className="w-4 h-4 text-pink-600" /></span>;
+        case 'google': return <span title="Google"><GoogleIcon className="w-4 h-4" /></span>;
         default: return null;
     }
 }
